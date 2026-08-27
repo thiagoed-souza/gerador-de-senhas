@@ -19,30 +19,30 @@ def gerar_senha(tamanho, incluir_maiusculas, incluir_numeros, incluir_simbolos):
 
     return ''.join(secrets.choice(caracteres) for _ in range (tamanho))
 
-    @app.route('/', methods=['GET', 'POST'])
-    def index():
-        senha_gerada = ""
-        tamanho = 12
-        maiusculas = True
-        numeros = True
-        simbolos = True
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    senha_gerada = ""
+    tamanho = 12
+    maiusculas = True
+    numeros = True
+    simbolos = True
 
-        if resquest.method == 'POST':
-            tamanho = int(request.form.get('tamanho', 12))
-            maiusculas = 'maiusculas' in request.form
-            numeros = 'numeros' in request.form
-            simbolos = 'simbolos' in request.form
+    if request.method == 'POST':
+        tamanho = int(request.form.get('tamanho', 12))
+        maiusculas = 'maiusculas' in request.form
+        numeros = 'numeros' in request.form
+        simbolos = 'simbolos' in request.form
+        
+        senha_gerada = gerar_senha(tamanho, maiusculas, numeros, simbolos)
 
-            senha_gerada = gerar_senha(tamanho, maiusculas, numeros, simbolos)
+    return render_template(
+        'index.html',
+        senha=senha_gerada,
+        tamanho=tamanho,
+        maiusculas=maiusculas,
+        numeros=numeros,
+        simbolos=simbolos
+    )
 
-        return render_template(
-            'index.html',
-            senha=senha_gerada,
-            tamanho=tamanho,
-            maiusculas=maiusculas,
-            numeros=numeros,
-            simbolos=incluir_simbolos
-        )
-
-    if __name__ == '__main__':
-        app.run(debug=True)
+if __name__ == '__main__':
+    app.run(debug=True)
