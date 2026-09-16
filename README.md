@@ -1,56 +1,59 @@
-# 🔐 Gerador de Senhas Seguras Web
+<div align="center">
 
-Uma aplicação web moderna, responsiva e segura desenvolvida com **Python (Flask)** para geração de senhas customizadas com critérios de complexidade e medidor de força em tempo real.
+# 🛡️ PassGuard
+
+**Gerador e Cofre de Senhas Seguro com Flask & Tailwind CSS**
+
+![Python](https://img.shields.io/badge/Python-306998?style=for-the-badge&logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
 
 <p align="center">
-  <img src="./assets/criador_de_senha.png" alt="Preview do Gerador de Senhas" width="420">
+  Uma aplicação web moderna e responsiva para geração de senhas fortes, verificação de segurança em tempo real e armazenamento seguro de credenciais.
 </p>
 
-<p align="center">
-  🌐 <b>Acesse a aplicação online:</b> <a href="https://gerador-de-senhas-c1yl.onrender.com" target="_blank">gerador-de-senhas-c1yl.onrender.com</a>
-</p>
+</div>
 
 ---
 
-## 🚀 Funcionalidades
+## 📌 Sobre o Projeto
 
-- 🎲 **Geração Criptograficamente Segura:** Utiliza a biblioteca nativa `secrets` do Python para garantir aleatoriedade forte contra ataques de força bruta.
-- 🎛️ **Customização Completa:** Controle total sobre o tamanho da senha (6 a 32 caracteres) e tipos de caracteres incluídos (Maiúsculas, Números e Símbolos Especiais).
-- 📊 **Medidor de Força em Tempo Real:** Indicador dinâmico em JavaScript que calcula e exibe visualmente o nível de segurança (*Fraca*, *Média*, *Forte* e *Impenetrável*).
-- 📋 **Cópia Rápida:** Botão para copiar a senha gerada diretamente para a área de transferência com feedback visual dinâmico no ícone.
-- 🎨 **Design Moderno (Dark Mode):** Interface elegante em tom escuro no estilo *Glassmorphism*, totalmente responsiva para dispositivos móveis e desktop.
+O **PassGuard** é uma solução completa desenvolvida para facilitar a gestão de credenciais do dia a dia. Com uma interface estilo *dark mode* elegante e responsiva, o sistema permite personalizar a geração de senhas, medir sua força em tempo real e armazená-las de forma centralizada em um cofre protegido por autenticação.
+
+---
+
+## ✨ Funcionalidades Principais
+
+* **🔑 Gerador Configurável de Senhas:** Personalização de tamanho (6 a 32 caracteres) e inclusão de letras maiúsculas, números e símbolos.
+* **📊 Indicador de Força em Tempo Real:** Análise instantânea de complexidade da senha via JavaScript.
+* **🔐 Cofre de Senhas:** Armazenamento individual de credenciais por usuário.
+* **👁️ Ocultação/Exibição Dinâmica:** Alternância de visibilidade para senhas salvas no cofre.
+* **🔍 Busca em Tempo Real:** Filtro rápido por nome do serviço ou usuário dentro do cofre.
+* **📋 Copia Rápida:** Botão com retorno visual para copiar senhas para a área de transferência.
+* **👤 Gestão de Perfil:** Atualização de avatar com *preview* instantâneo e alteração de senha de acesso.
+* **🛡️ Autenticação de Usuários:** Sistema completo de cadastro, login, logout e rotas protegidas.
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
 
-### **Backend**
-- **[Python 3](https://www.python.org/):** Linguagem base do sistema.
-- **[Flask](https://flask.palletsprojects.com/):** Microframework web responsável pelas rotas e renderização dos templates Jinja2.
-- **[Gunicorn](https://gunicorn.org/):** Servidor HTTP WSGI de alta performance para ambiente de produção no Render.
-
-### **Frontend**
-- **[HTML5](https://developer.mozilla.org/pt-BR/docs/Web/HTML):** Estruturação semântica da interface.
-- **[Tailwind CSS](https://tailwindcss.com/):** Framework CSS utilitário para estilização e responsividade.
-- **[JavaScript (Vanilla)](https://developer.mozilla.org/pt-BR/docs/Web/JavaScript):** Manipulação de DOM para atualização do slider, cálculo da força da senha e evento de cópia.
-- **[FontAwesome](https://fontawesome.com/):** Biblioteca de ícones vetoriais.
-
-### **Infraestrutura & Ferramentas**
-- **[GitHub Codespaces](https://github.com/features/codespaces):** Ambiente de desenvolvimento integrado na nuvem.
-- **[Render](https://render.com/):** Plataforma de hospedagem com integração e deploy contínuo (CD) automatizado a cada `git push`.
+* **Backend:** Python, Flask, Jinja2
+* **Frontend:** HTML5, Tailwind CSS (via CDN), Font Awesome
+* **Scripting:** JavaScript Vanilla (manipulação do DOM, manipulação da área de transferência e filtro de busca)
 
 ---
 
-## 💻 Como Executar o Projeto Localmente
+## 📂 Estrutura do Projeto
 
-### **Pré-requisitos**
-Certifique-se de ter instalado em sua máquina:
-- **Python 3.10+**
-- **Git**
-
-### **Passo a passo**
-
-1. **Clonar o repositório:**
-   ```bash
-   git clone [https://github.com/thiagoed-souza/gerador-de-senhas.git](https://github.com/thiagoed-souza/gerador-de-senhas.git)
-   cd gerador-de-senhas
+```text
+passguard/
+├── app.py                # Aplicação Flask (rotas e lógica principal)
+├── static/               # Arquivos estáticos (uploads de foto de perfil)
+│   └── uploads/
+└── templates/            # Templates HTML (Jinja2)
+    ├── base.html         # Layout base e navegação
+    ├── dashboard.html    # Painel principal (gerador e cofre)
+    ├── perfil.html       # Gerenciamento de perfil e fotos
+    ├── login.html        # Autenticação de usuário
+    └── register.html     # Cadastro de novos usuários
