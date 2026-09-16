@@ -15,9 +15,9 @@ app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # Limite de 2MB por foto
 
 # --- CONFIGURAÇÕES DE ENVIO DE E-MAIL (SMTP) ---
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ['true', '1']
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'seu_email@gmail.com')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'sua_senha_de_app')
 app.config['MAIL_DEFAULT_SENDER'] = app.config['MAIL_USERNAME']
@@ -28,6 +28,11 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
+
+# Cria as tabelas do banco de dados automaticamente ao iniciar (Essencial para o Gunicorn no Render)
+with app.app_context():
+    db.create_all()
+
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message = "Faça login para acessar esta página."
@@ -82,7 +87,7 @@ def gerar_senha(tamanho=12, maiusculas=True, numeros=True, simbolos=True):
 def enviar_codigo_email(destinatario_email, codigo):
     try:
         msg = Message(
-            subject="Código de Verificação de Conta",
+            subject="Código de Verificação de Conta - PassGuard",
             recipients=[destinatario_email],
             body=f"Olá!\n\nSeu código de verificação para concluir o cadastro é: {codigo}\n\nSe você não solicitou este cadastro, ignore esta mensagem."
         )
@@ -112,7 +117,7 @@ def register():
             flash('Este e-mail já está sendo utilizado.', 'danger')
             return redirect(url_for('register'))
 
-        # Gerar código de 6 dígitos
+        # Gerar código aleatório de 6 dígitos
         codigo = f"{secrets.randbelow(1000000):06d}"
         senha_hash = generate_password_hash(senha, method='scrypt')
 
@@ -132,10 +137,10 @@ def register():
         # Enviar código para o e-mail
         if enviar_codigo_email(email, codigo):
             session['email_pendente'] = email
-            flash('Cadastro inicial realizado! Verifique seu e-mail para obter o código de validação.', 'info')
+            flash('Cadastro realizado! Verifique seu e-mail para obter o código de ativação.', 'info')
             return redirect(url_for('verificar'))
         else:
-            flash('Erro ao enviar o e-mail com o código de verificação. Verifique as configurações de SMTP.', 'danger')
+            flash('Erro ao enviar o e-mail com o código de verificação. Verifique suas credenciais de SMTP.', 'danger')
 
     return render_template('register.html')
 
@@ -290,6 +295,4 @@ def perfil():
     return render_template('perfil.html')
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(host='0.0.0.0', port=8000, debug=True)
