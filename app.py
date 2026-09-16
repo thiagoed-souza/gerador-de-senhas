@@ -54,6 +54,25 @@ class SenhaSalva(db.Model):
     senha = db.Column(db.String(255), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
 
+# Força a remoção do banco SQLite antigo se as colunas estiverem desatualizadas no Render
+with app.app_context():
+    # Caminhos possíveis do banco SQLite no Flask
+    caminhos_db = [
+        os.path.join(app.root_path, 'database.db'),
+        os.path.join(app.root_path, 'instance', 'database.db')
+    ]
+    
+    for db_file in caminhos_db:
+        if os.path.exists(db_file):
+            try:
+                os.remove(db_file)
+                print(f"[BANCO DE DADOS] Arquivo antigo {db_file} removido.")
+            except Exception as e:
+                print(f"[BANCO DE DADOS] Aviso ao tentar remover: {e}")
+
+    db.create_all()
+    print("[BANCO DE DADOS] Tabelas recriadas com sucesso com a nova estrutura!")
+
 # Cria as tabelas
 with app.app_context():
     db.create_all()
