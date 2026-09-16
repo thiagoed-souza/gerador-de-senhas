@@ -88,13 +88,14 @@ def enviar_codigo_email(destinatario_email, codigo):
     try:
         msg = Message(
             subject="Código de Verificação de Conta - PassGuard",
+            sender=app.config['MAIL_USERNAME'],
             recipients=[destinatario_email],
             body=f"Olá!\n\nSeu código de verificação para concluir o cadastro é: {codigo}\n\nSe você não solicitou este cadastro, ignore esta mensagem."
         )
         mail.send(msg)
         return True
     except Exception as e:
-        print(f"Erro ao enviar e-mail: {e}")
+        print(f"Erro ao enviar e-mail via SMTP: {e}")
         return False
 
 # --- ROTAS DE AUTENTICAÇÃO ---
@@ -140,7 +141,10 @@ def register():
             flash('Cadastro realizado! Verifique seu e-mail para obter o código de ativação.', 'info')
             return redirect(url_for('verificar'))
         else:
-            flash('Erro ao enviar o e-mail com o código de verificação. Verifique suas credenciais de SMTP.', 'danger')
+            db.session.delete(novo_usuario)
+            db.session.commit()
+            flash('Erro ao enviar o e-mail de verificação. Verifique suas credenciais SMTP/Senha de App do Gmail no Render.', 'danger')
+            return redirect(url_for('register'))
 
     return render_template('register.html')
 
