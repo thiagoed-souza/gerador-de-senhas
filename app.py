@@ -1,10 +1,12 @@
 import os
 import secrets
 import string
-from flask import Flask, render_template, redirect, url_for, flash, request
+from datetime import datetime
+from flask import Flask, render_template, redirect, url_for, flash, request, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_mail import Mail, Message
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
@@ -12,8 +14,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # Limite de 2MB por foto
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+# --- CONFIGURAÇÕES DE ENVIO DE E-MAIL (SMTP) ---
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'seu_email@gmail.com')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'sua_senha_de_app')
+app.config['MAIL_DEFAULT_SENDER'] = app.config['MAIL_USERNAME']
 
+mail = Mail(app)
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
@@ -25,9 +36,17 @@ login_manager.login_message = "Faça login para acessar esta página."
 
 class Usuario(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    data_nascimento = db.Column(db.String(10), nullable=False)
     username = db.Column(db.String(50), unique=True, nullable=False)
     senha_hash = db.Column(db.String(255), nullable=False)
     foto_perfil = db.Column(db.String(255), default='default.png')
+    
+    # Controle de Verificação de E-mail
+    verificado = db.Column(db.Boolean, default=False)
+    codigo_verificacao = db.Column(db.String(6), nullable=True)
+
     senhas = db.relationship('SenhaSalva', backref='dono', lazy=True)
 
 class SenhaSalva(db.Model):
@@ -60,28 +79,88 @@ def gerar_senha(tamanho=12, maiusculas=True, numeros=True, simbolos=True):
     
     return ''.join(secrets.choice(caracteres) for _ in range(tamanho))
 
+def enviar_codigo_email(destinatario_email, codigo):
+    try:
+        msg = Message(
+            subject="Código de Verificação de Conta",
+            recipients=[destinatario_email],
+            body=f"Olá!\n\nSeu código de verificação para concluir o cadastro é: {codigo}\n\nSe você não solicitou este cadastro, ignore esta mensagem."
+        )
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"Erro ao enviar e-mail: {e}")
+        return False
+
 # --- ROTAS DE AUTENTICAÇÃO ---
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
+        nome = request.form.get('nome', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        data_nascimento = request.form.get('data_nascimento', '').strip()
         username = request.form.get('username', '').strip()
         senha = request.form.get('senha', '')
 
+        # Validações de duplicação
         if Usuario.query.filter_by(username=username).first():
             flash('Nome de usuário já cadastrado.', 'danger')
             return redirect(url_for('register'))
 
+        if Usuario.query.filter_by(email=email).first():
+            flash('Este e-mail já está sendo utilizado.', 'danger')
+            return redirect(url_for('register'))
+
+        # Gerar código de 6 dígitos
+        codigo = f"{secrets.randbelow(1000000):06d}"
         senha_hash = generate_password_hash(senha, method='scrypt')
-        novo_usuario = Usuario(username=username, senha_hash=senha_hash)
+
+        novo_usuario = Usuario(
+            nome=nome,
+            email=email,
+            data_nascimento=data_nascimento,
+            username=username,
+            senha_hash=senha_hash,
+            codigo_verificacao=codigo,
+            verificado=False
+        )
         
         db.session.add(novo_usuario)
         db.session.commit()
-        
-        flash('Conta criada com sucesso! Faça login.', 'success')
-        return redirect(url_for('login'))
+
+        # Enviar código para o e-mail
+        if enviar_codigo_email(email, codigo):
+            session['email_pendente'] = email
+            flash('Cadastro inicial realizado! Verifique seu e-mail para obter o código de validação.', 'info')
+            return redirect(url_for('verificar'))
+        else:
+            flash('Erro ao enviar o e-mail com o código de verificação. Verifique as configurações de SMTP.', 'danger')
 
     return render_template('register.html')
+
+@app.route('/verificar', methods=['GET', 'POST'])
+def verificar():
+    email = session.get('email_pendente')
+    if not email:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        codigo_digitado = request.form.get('codigo', '').strip()
+        usuario = Usuario.query.filter_by(email=email).first()
+
+        if usuario and usuario.codigo_verificacao == codigo_digitado:
+            usuario.verificado = True
+            usuario.codigo_verificacao = None
+            db.session.commit()
+            
+            session.pop('email_pendente', None)
+            flash('E-mail verificado com sucesso! Agora você pode fazer login.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash('Código incorreto. Tente novamente.', 'danger')
+
+    return render_template('verificar.html', email=email)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -92,6 +171,11 @@ def login():
         user = Usuario.query.filter_by(username=username).first()
         
         if user and check_password_hash(user.senha_hash, senha):
+            if not user.verificado:
+                session['email_pendente'] = user.email
+                flash('Sua conta ainda não foi verificada. Digite o código enviado ao seu e-mail.', 'warning')
+                return redirect(url_for('verificar'))
+
             login_user(user)
             return redirect(url_for('dashboard'))
         
