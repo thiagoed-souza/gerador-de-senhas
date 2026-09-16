@@ -1,6 +1,7 @@
 import os
 import secrets
 import string
+import traceback
 from datetime import datetime
 from flask import Flask, render_template, redirect, url_for, flash, request, session
 from flask_sqlalchemy import SQLAlchemy
@@ -12,14 +13,14 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
-app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # Limite de 2MB por foto
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # Limite de 2MB
 
 # --- CONFIGURAÇÕES DE ENVIO DE E-MAIL (SMTP) ---
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ['true', '1']
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'seu_email@gmail.com')
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'sua_senha_de_app')
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
 app.config['MAIL_DEFAULT_SENDER'] = app.config['MAIL_USERNAME']
 
 mail = Mail(app)
@@ -28,14 +29,6 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
-
-# Cria as tabelas do banco de dados automaticamente ao iniciar (Essencial para o Gunicorn no Render)
-with app.app_context():
-    db.create_all()
-
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
-login_manager.login_message = "Faça login para acessar esta página."
 
 # --- MODELOS DO BANCO DE DADOS ---
 
@@ -61,6 +54,14 @@ class SenhaSalva(db.Model):
     senha = db.Column(db.String(255), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
 
+# Cria as tabelas
+with app.app_context():
+    db.create_all()
+
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+login_manager.login_message = "Faça login para acessar esta página."
+
 @login_manager.user_loader
 def load_user(user_id):
     return Usuario.query.get(int(user_id))
@@ -85,17 +86,22 @@ def gerar_senha(tamanho=12, maiusculas=True, numeros=True, simbolos=True):
     return ''.join(secrets.choice(caracteres) for _ in range(tamanho))
 
 def enviar_codigo_email(destinatario_email, codigo):
+    if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+        print("[ERRO SMTP] MAIL_USERNAME ou MAIL_PASSWORD não foram configurados nas variáveis de ambiente.")
+        return False
+
     try:
         msg = Message(
             subject="Código de Verificação de Conta - PassGuard",
             sender=app.config['MAIL_USERNAME'],
             recipients=[destinatario_email],
-            body=f"Olá!\n\nSeu código de verificação para concluir o cadastro é: {codigo}\n\nSe você não solicitou este cadastro, ignore esta mensagem."
+            body=f"Olá!\n\nSeu código de verificação é: {codigo}\n\nSe você não solicitou este cadastro, ignore esta mensagem."
         )
         mail.send(msg)
         return True
     except Exception as e:
-        print(f"Erro ao enviar e-mail via SMTP: {e}")
+        print("[ERRO NO ENVIO DE E-MAIL]:")
+        traceback.print_exc()
         return False
 
 # --- ROTAS DE AUTENTICAÇÃO ---
@@ -103,47 +109,53 @@ def enviar_codigo_email(destinatario_email, codigo):
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        nome = request.form.get('nome', '').strip()
-        email = request.form.get('email', '').strip().lower()
-        data_nascimento = request.form.get('data_nascimento', '').strip()
-        username = request.form.get('username', '').strip()
-        senha = request.form.get('senha', '')
+        try:
+            nome = request.form.get('nome', '').strip()
+            email = request.form.get('email', '').strip().lower()
+            data_nascimento = request.form.get('data_nascimento', '').strip()
+            username = request.form.get('username', '').strip()
+            senha = request.form.get('senha', '')
 
-        # Validações de duplicação
-        if Usuario.query.filter_by(username=username).first():
-            flash('Nome de usuário já cadastrado.', 'danger')
-            return redirect(url_for('register'))
+            if Usuario.query.filter_by(username=username).first():
+                flash('Nome de usuário já cadastrado.', 'danger')
+                return redirect(url_for('register'))
 
-        if Usuario.query.filter_by(email=email).first():
-            flash('Este e-mail já está sendo utilizado.', 'danger')
-            return redirect(url_for('register'))
+            if Usuario.query.filter_by(email=email).first():
+                flash('Este e-mail já está sendo utilizado.', 'danger')
+                return redirect(url_for('register'))
 
-        # Gerar código aleatório de 6 dígitos
-        codigo = f"{secrets.randbelow(1000000):06d}"
-        senha_hash = generate_password_hash(senha, method='scrypt')
+            codigo = f"{secrets.randbelow(1000000):06d}"
+            senha_hash = generate_password_hash(senha, method='scrypt')
 
-        novo_usuario = Usuario(
-            nome=nome,
-            email=email,
-            data_nascimento=data_nascimento,
-            username=username,
-            senha_hash=senha_hash,
-            codigo_verificacao=codigo,
-            verificado=False
-        )
-        
-        db.session.add(novo_usuario)
-        db.session.commit()
-
-        # Enviar código para o e-mail
-        if enviar_codigo_email(email, codigo):
-            session['email_pendente'] = email
-            flash('Cadastro realizado! Verifique seu e-mail para obter o código de ativação.', 'info')
-            return redirect(url_for('verificar'))
-        else:
-            db.session.delete(novo_usuario)
+            novo_usuario = Usuario(
+                nome=nome,
+                email=email,
+                data_nascimento=data_nascimento,
+                username=username,
+                senha_hash=senha_hash,
+                codigo_verificacao=codigo,
+                verificado=False
+            )
+            
+            db.session.add(novo_usuario)
             db.session.commit()
-            flash('Erro ao enviar o e-mail de verificação. Verifique suas credenciais SMTP/Senha de App do Gmail no Render.', 'danger')
+
+            # Tenta enviar o e-mail
+            if enviar_codigo_email(email, codigo):
+                session['email_pendente'] = email
+                flash('Cadastro realizado! Verifique seu e-mail para obter o código.', 'info')
+                return redirect(url_for('verificar'))
+            else:
+                db.session.delete(novo_usuario)
+                db.session.commit()
+                flash('Não foi possível enviar o e-mail de verificação. Verifique as credenciais de e-mail no servidor.', 'danger')
+                return redirect(url_for('register'))
+
+        except Exception as e:
+            db.session.rollback()
+            print("[ERRO NA ROTA DE REGISTRO]:")
+            traceback.print_exc()
+            flash('Ocorreu um erro interno ao processar o cadastro. Tente novamente.', 'danger')
             return redirect(url_for('register'))
 
     return render_template('register.html')
@@ -164,7 +176,7 @@ def verificar():
             db.session.commit()
             
             session.pop('email_pendente', None)
-            flash('E-mail verificado com sucesso! Agora você pode fazer login.', 'success')
+            flash('E-mail verificado com sucesso! Faça login.', 'success')
             return redirect(url_for('login'))
         else:
             flash('Código incorreto. Tente novamente.', 'danger')
@@ -196,7 +208,7 @@ def login():
 @login_required
 def logout():
     logout_user()
-    flash('Sessão encerrada com sucesso.', 'info')
+    flash('Sessão encerrada.', 'info')
     return redirect(url_for('login'))
 
 # --- ROTAS PRINCIPAIS ---
@@ -261,7 +273,6 @@ def deletar_senha(id):
 @login_required
 def perfil():
     if request.method == 'POST':
-        # Alterar Senha
         if 'alterar_senha' in request.form:
             senha_atual = request.form.get('senha_atual')
             nova_senha = request.form.get('nova_senha')
@@ -273,7 +284,6 @@ def perfil():
                 db.session.commit()
                 flash('Senha atualizada com sucesso!', 'success')
 
-        # Alterar Foto de Perfil
         elif 'alterar_foto' in request.form:
             if 'foto' not in request.files:
                 flash('Nenhum arquivo enviado.', 'danger')
