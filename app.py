@@ -2,8 +2,9 @@ import os
 import secrets
 import string
 import traceback
+import resend
 from datetime import datetime
-from dotenv import load_dotenv  # Importa a biblioteca para ler o .env
+from dotenv import load_dotenv
 
 # Carrega as variáveis de ambiente do arquivo .env (rodando localmente)
 load_dotenv()
@@ -12,7 +13,6 @@ from flask import Flask, render_template, redirect, url_for, flash, request, ses
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_mail import Mail, Message
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
@@ -20,16 +20,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # Limite de 2MB
 
-# --- CONFIGURAÇÕES DE ENVIO DE E-MAIL (SMTP) ---
-app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ['true', '1']
-app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'False').lower() in ['true', '1']
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
-app.config['MAIL_DEFAULT_SENDER'] = app.config['MAIL_USERNAME']
-
-mail = Mail(app)
+# --- CONFIGURAÇÃO RESEND (ENVIO VIA API HTTP) ---
+resend.api_key = os.environ.get('RESEND_API_KEY', '')
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -106,21 +98,21 @@ def gerar_senha(tamanho=12, maiusculas=True, numeros=True, simbolos=True):
     return ''.join(secrets.choice(caracteres) for _ in range(tamanho))
 
 def enviar_codigo_email(destinatario_email, codigo, assunto="Código de Verificação - PassGuard"):
-    if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
-        print("[ERRO SMTP] MAIL_USERNAME ou MAIL_PASSWORD não foram configurados nas variáveis de ambiente.")
+    if not resend.api_key:
+        print("[ERRO RESEND] RESEND_API_KEY não foi configurada nas variáveis de ambiente.")
         return False
 
     try:
-        msg = Message(
-            subject=assunto,
-            sender=app.config['MAIL_USERNAME'],
-            recipients=[destinatario_email],
-            body=f"Olá!\n\nSeu código de verificação é: {codigo}\n\nSe você não solicitou este código, ignore esta mensagem."
-        )
-        mail.send(msg)
+        r = resend.Emails.send({
+            "from": "PassGuard <onboarding@resend.dev>",
+            "to": destinatario_email,
+            "subject": assunto,
+            "html": f"<p>Olá!</p><p>Seu código de verificação é: <strong>{codigo}</strong></p><p>Se você não solicitou este código, ignore esta mensagem.</p>"
+        })
+        print(f"[RESEND SUCCESS] E-mail enviado com sucesso: {r}")
         return True
     except Exception as e:
-        print("[ERRO NO ENVIO DE E-MAIL]:")
+        print(f"[ERRO RESEND]: {e}")
         traceback.print_exc()
         return False
 
@@ -167,7 +159,7 @@ def register():
             else:
                 db.session.delete(novo_usuario)
                 db.session.commit()
-                flash('Não foi possível enviar o e-mail de verificação. Verifique as credenciais de e-mail no servidor.', 'danger')
+                flash('Não foi possível enviar o e-mail de verificação. Verifique a chave da API do Resend.', 'danger')
                 return redirect(url_for('register'))
 
         except Exception as e:
