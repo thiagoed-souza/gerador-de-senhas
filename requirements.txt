@@ -1,5 +1,7 @@
 Flask
-gunicorn
 Flask-SQLAlchemy
 Flask-Login
 Flask-Mail
+Werkzeug
+gunicorn
+python-dotenv
