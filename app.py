@@ -3,6 +3,11 @@ import secrets
 import string
 import traceback
 from datetime import datetime
+from dotenv import load_dotenv  # Importa a biblioteca para ler o .env
+
+# Carrega as variáveis de ambiente do arquivo .env (rodando localmente)
+load_dotenv()
+
 from flask import Flask, render_template, redirect, url_for, flash, request, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -56,7 +61,6 @@ class SenhaSalva(db.Model):
 
 # Força a remoção do banco SQLite antigo se as colunas estiverem desatualizadas no Render
 with app.app_context():
-    # Caminhos possíveis do banco SQLite no Flask
     caminhos_db = [
         os.path.join(app.root_path, 'database.db'),
         os.path.join(app.root_path, 'instance', 'database.db')
@@ -72,10 +76,6 @@ with app.app_context():
 
     db.create_all()
     print("[BANCO DE DADOS] Tabelas recriadas com sucesso com a nova estrutura!")
-
-# Cria as tabelas
-with app.app_context():
-    db.create_all()
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
