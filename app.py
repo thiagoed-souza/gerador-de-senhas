@@ -22,8 +22,9 @@ app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # Limite de 2MB
 
 # --- CONFIGURAÇÕES DE ENVIO DE E-MAIL (SMTP) ---
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ['true', '1']
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 465))
+app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'True').lower() in ['true', '1']
+app.config['MAIL_USE_TLS'] = False
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
 app.config['MAIL_DEFAULT_SENDER'] = app.config['MAIL_USERNAME']
@@ -46,7 +47,7 @@ class Usuario(UserMixin, db.Model):
     senha_hash = db.Column(db.String(255), nullable=False)
     foto_perfil = db.Column(db.String(255), default='default.png')
     
-    # Controle de Verificação de E-mail
+    # Controle de Verificação e Recuperação
     verificado = db.Column(db.Boolean, default=False)
     codigo_verificacao = db.Column(db.String(6), nullable=True)
 
@@ -59,7 +60,7 @@ class SenhaSalva(db.Model):
     senha = db.Column(db.String(255), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
 
-# Força a remoção do banco SQLite antigo se as colunas estiverem desatualizadas no Render
+# Recria as tabelas do SQLite caso haja alterações no modelo
 with app.app_context():
     caminhos_db = [
         os.path.join(app.root_path, 'database.db'),
@@ -75,7 +76,7 @@ with app.app_context():
                 print(f"[BANCO DE DADOS] Aviso ao tentar remover: {e}")
 
     db.create_all()
-    print("[BANCO DE DADOS] Tabelas recriadas com sucesso com a nova estrutura!")
+    print("[BANCO DE DADOS] Tabelas recriadas com sucesso!")
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -104,17 +105,17 @@ def gerar_senha(tamanho=12, maiusculas=True, numeros=True, simbolos=True):
     
     return ''.join(secrets.choice(caracteres) for _ in range(tamanho))
 
-def enviar_codigo_email(destinatario_email, codigo):
+def enviar_codigo_email(destinatario_email, codigo, assunto="Código de Verificação - PassGuard"):
     if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
         print("[ERRO SMTP] MAIL_USERNAME ou MAIL_PASSWORD não foram configurados nas variáveis de ambiente.")
         return False
 
     try:
         msg = Message(
-            subject="Código de Verificação de Conta - PassGuard",
+            subject=assunto,
             sender=app.config['MAIL_USERNAME'],
             recipients=[destinatario_email],
-            body=f"Olá!\n\nSeu código de verificação é: {codigo}\n\nSe você não solicitou este cadastro, ignore esta mensagem."
+            body=f"Olá!\n\nSeu código de verificação é: {codigo}\n\nSe você não solicitou este código, ignore esta mensagem."
         )
         mail.send(msg)
         return True
@@ -159,8 +160,7 @@ def register():
             db.session.add(novo_usuario)
             db.session.commit()
 
-            # Tenta enviar o e-mail
-            if enviar_codigo_email(email, codigo):
+            if enviar_codigo_email(email, codigo, "Código de Verificação de Conta - PassGuard"):
                 session['email_pendente'] = email
                 flash('Cadastro realizado! Verifique seu e-mail para obter o código.', 'info')
                 return redirect(url_for('verificar'))
@@ -222,6 +222,55 @@ def login():
         flash('Usuário ou senha incorretos.', 'danger')
 
     return render_template('login.html')
+
+# --- ROTAS DE RECUPERAÇÃO DE SENHA ---
+
+@app.route('/esqueci-senha', methods=['GET', 'POST'])
+def esqueci_senha():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        usuario = Usuario.query.filter_by(email=email).first()
+
+        if usuario:
+            codigo = f"{secrets.randbelow(1000000):06d}"
+            usuario.codigo_verificacao = codigo
+            db.session.commit()
+
+            if enviar_codigo_email(email, codigo, "Código para Redefinição de Senha - PassGuard"):
+                session['email_recuperacao'] = email
+                flash('Código de verificação enviado para o seu e-mail.', 'info')
+                return redirect(url_for('redefinir_senha'))
+            else:
+                flash('Erro ao enviar o e-mail. Tente novamente mais tarde.', 'danger')
+        else:
+            flash('Se o e-mail estiver cadastrado, você receberá um código de verificação.', 'info')
+
+    return render_template('esqueci_senha.html')
+
+@app.route('/redefinir-senha', methods=['GET', 'POST'])
+def redefinir_senha():
+    email = session.get('email_recuperacao')
+    if not email:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        codigo_digitado = request.form.get('codigo', '').strip()
+        nova_senha = request.form.get('nova_senha', '')
+
+        usuario = Usuario.query.filter_by(email=email).first()
+
+        if usuario and usuario.codigo_verificacao == codigo_digitado:
+            usuario.senha_hash = generate_password_hash(nova_senha, method='scrypt')
+            usuario.codigo_verificacao = None
+            db.session.commit()
+
+            session.pop('email_recuperacao', None)
+            flash('Sua senha foi redefinida com sucesso! Faça login.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash('Código incorreto ou expirado. Tente novamente.', 'danger')
+
+    return render_template('redefinir_senha.html', email=email)
 
 @app.route('/logout')
 @login_required
