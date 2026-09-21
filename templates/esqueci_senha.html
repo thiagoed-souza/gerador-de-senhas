@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <h2>Recuperar Senha</h2>
+    <form method="POST">
+        <label>Informe seu e-mail cadastrado:</label>
+        <input type="email" name="email" required placeholder="seu@email.com">
+        <button type="submit" class="btn">Enviar Código de Recuperação</button>
+    </form>
+    <a href="{{ url_for('login') }}">Voltar ao Login</a>
+</div>
+{% endblock %}
